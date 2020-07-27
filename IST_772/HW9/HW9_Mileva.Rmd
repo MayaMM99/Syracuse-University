@@ -1,0 +1,427 @@
+---
+title: "Homework 9"
+author: "Maya Mileva"
+output:
+  pdf_document:
+    toc_depth: 2
+  html_document:
+    df_print: paged
+    toc_depth: '2'
+  word_document:
+    toc_depth: '2'
+due date: 12/6/2019
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, cache = FALSE)
+```
+
+*due date: Dec 6th, 2019*
+
+I did this homework by myself, with help from the book and the professor.
+
+```{r, include=FALSE}
+## Run these functions to get a clean test of homework code
+# dev.off() # Clear the graph window
+cat('\014')  # Clear the console
+rm(list=ls()) # Clear user objects from the environment
+```
+
+```{r, include=FALSE}
+library(BEST)
+library(RColorBrewer)
+library(BayesFactor)
+library(ltm)
+library(psych)
+library(BaylorEdPsych)
+library(knitr)
+library(printr)
+library(stats) 
+library(MCMCpack)
+library(car)
+```
+
+## __Exercises__
+
+__1. The built‑in data sets of R include one called “mtcars,” which stands for Motor Trend cars. Motor Trend was the name of an automotive magazine and this data set contains information on cars from the 1970s. Use “?mtcars” to display help about the data set. The data set includes a dichotomous variable called vs, which is coded as 0 for an engine with cylinders in a v‑shape and 1 for so called “straight” engines. Use logistic regression to predict vs, using two metric variables in the data set, gear (number of forward gears) and hp (horsepower). Interpret the resulting null hypothesis significance tests.__
+
+```{r}
+## Display help about the data set
+# ?mtcars
+mycars <- mtcars
+dim(mycars)
+# str(mycars)
+```
+
+The data set comprises fuel consumption and 10 aspects of automobile design and performance for 32 automobiles (1973--74 models).
+
+
+[, 1]	mpg	Miles/(US) gallon
+
+[, 2]	cyl	Number of cylinders
+
+[, 3]	disp	Displacement (cu.in.)
+
+[, 4]	hp	Gross horsepower
+
+[, 5]	drat	Rear axle ratio
+
+[, 6]	wt	Weight (1000 lbs)
+
+[, 7]	qsec	1/4 mile time
+
+__[, 8]	vs	Engine (0 = V-shaped, 1 = straight)__
+
+[, 9]	am	Transmission (0 = automatic, 1 = manual)
+
+[,10]	gear	Number of forward gears
+
+[,11]	carb	Number of carburetors
+
+```{r}
+kable(head(mtcars),align = 'c')
+```
+
+
+The data set includes a dichotomous variable called vs, which is coded as __0__ for an engine with cylinders in a v‑shape and __1__ for so called “straight” engines.
+
+```{r}
+par(mfrow=c(2,4))
+for (i in c(2,4:10)) hist(mycars[[i]],main=colnames(mycars)[i], col = "#005E7C", border ="white")
+
+```
+
+We have to use logistic regression to predict vs, using two metric variables in the data set, gear (number of forward gears) and hp (horsepower).
+
+```{r cordata}
+round(cor(mycars[,c(2,4:10)]),2)
+```
+
+We can see strong negative correlation  between "vs" and "hp". 
+Correlation between "gear" and "hp" is .21, which is small and not strong. "hp" and "gear" are not strongly correlated either.
+
+```{r}
+par(mfrow = c(1,2))
+hist(mycars$hp, main =  "Histogram of horse power", 
+     col = "#040F16", border = "white")
+hist(mycars$gear, main =  "Histogram of gear", 
+     col = "#005E7C", border = "white")
+```
+
+Both predictors are not normally distributed. The range for "hp" is from approximately 50 to 350, and the range for gear varies from 3 to 5.
+
+```{r}
+mycars$vs <- as.factor(mycars$vs)
+par(mfrow=c(1,2))
+boxplot(hp~vs, data = mycars, col = "#040F16", border = "gray")
+boxplot(gear~vs, data = mycars, col = "#005E7C", border = "gray")
+```
+
+The Distribution of grear has outliers. It looks like mostly only gear 4 has straight engine. There is some overlaping. So the qestion here if "hp" going to be a good predictor.
+
+
+#### GLM Output
+
+```{r}
+glmOut <- glm(formula = vs ~ hp + gear, 
+              family = binomial(link="logit"), 
+              data = mycars)
+summary(glmOut)
+```
+
+In the equation we can see the "link function" -  in this case indicating binomial(). By specifying "binomial()" we invoke the inverse logit as the basis of fitting the X variables("hp" and "gear") to the Y variable ("vs").
+
+The "Deviance Residuals" show diagnostic information about the distribution of the residuals after the model is fit. The mean of the residuals should be always 0, in our case slightly over 0.
+
+```{r}
+mean(residuals(glmOut))
+```
+The fact that the median residual is slightly negative suggest that the distribution of the residuals is slightly positive skewed.
+
+```{r}
+hist(residuals(glmOut), col = "#0094C6", border = "white")
+```
+
+These residuals represent error of prediction. If there is residual that is strongly positive or strongly negative, it might suggest problem, such as present of an outlier like in this case.
+
+The output shows that the __intercept__ is *not significantly different from 0*. The value of the intercept is not very meaningful to us, but we must keep it in the model to make sure that other coefficient are calibrated correctly. 
+
+The coefficient on the __"hp"__ predictor is *statistically significant*, based on the Wald`s z-test value of -2.46 and the associated p-value. Because p-value (0.0141) <.05 we can reject the null hypothesis that the log-odds of "hp" is 0 in the population. The Wald’s z-test is calculated by dividing the coefficient value by the standard error.
+
+The tiny coefficient of __"gear"__ is *not significantly different from 0*, based on a Wald`s z-test value of -0.86 and associated p-value of 0.3907. Thus we *fail to reject* the null hypothesis that the log-odds of "gear" is equal to 0 in the population.
+
+All these coefficients are log-odds values, we need to convert them to regular odds for easier interpretation.
+
+```{r}
+confint(glmOut)
+
+exp(cbind(OR = coef(glmOut), confint(glmOut)))
+# round(9.669901e-01, digits = 2) #0.97 - for hp 0.85 to 0.97
+# round(2.876797e+00, digits = 2) #2.88 - for gear 0.02 to 2.88 # straddle with 1
+
+```
+
+We usually ignore odds ratios for intercept terms.
+The odds of having a straight, rather than v-shaped engine, increase by 0.92 (rounding up 9.230734e-01) for every unit increase in gross horsepower. In this case the odds are almost 1:1 (the odds of "1" do not change at all in response of changing horsepower). The 95% confidence interval for "hp" ranged from 0.84:1 up to 0.97:1 (really close to 1, but doesn`t straddle), expressed in plain odds; if the study was repeated 100 times, 95% of similarly constructed intervals would contain the true population value.
+
+The confidence interval for "gear" stradles with 1:1, confirming the nonsignificant results for that coefficient. The definition of CI is that if you constructed a very large number of similar experiments based on new samples, 95% of the CI you would calculate would contain the population value.
+
+
+We have to take a look at the deviance too.
+
+__Null deviance: 43.860  on 31  degrees of freedom__
+
+__Residual deviance: 16.013  on 29  degrees of freedom__
+
+__AIC: 22.013__
+
+__Number of Fisher Scoring iterations: 7__
+
+The last line shows how many iterations of the model fitting it took to get the final model. AIC is a measure of stress in the model. 
+The "Null Deviance" shows amount of error in the model, if we pretend there is no connection between X variables and Y variable. It shows what would happen if the predictors had no predictive value. The null model shows 31 degrees of freedom for calculating the proportion of straight and v-shaped engine. 
+The null model in some ways represents the null hypothesis. The next line shows how much error is reduced by introducing the X variables. We lose 2 degrees by introducing 2 variables. By introducing 2 predictors we reduced error from 43.860 to 16.013 (which cost 3 degree of freedom). 
+
+The difference between the null model and the residual model is distributed as chi-square and can be used as an omnibus test.
+
+```{r}
+# Compare null model to two predictor model
+anova(glmOut, test = "Chisq") 
+```
+
+The first chi-square test shows a difference of 27.0225  on the one degree of freedom for model with just "hp" as predictor which is statistically significant. The second chi-square test of 0.8244 had "hp" and "gear" as predictors and is not statistically significant. Adding the second predictor didn`t segnifucantly reduced the residual deviance. These results make sense in the light of the significance test on the coefficients and confirms the utility of a model that contains only "hp". 
+
+```{r}
+table(round(predict(glmOut, type= "response")), mycars$vs)
+```
+
+The off diagonal items, 3 and 3 are all the errorneous predictions. 
+
+```{r}
+## Overall accuracy 
+(15+11)/32 
+(3+3)/32 # error rate
+```
+The overall accuracy was 81%.
+ 
+ 
+*Conclusion* 
+
+We tested a measures of horse power ("hp", ranged from 30 to 350) and gear("gear", range from 3 to 5) to see if they could predict the shape of the can engine("vs"). A chi-square omnibus test on the result of logistic regression was significant for model with the one predictor, chisq(1) =  27.0225, p<.0001. Only the Wald`s z-test on the "hp" coefficient was significant, z= -2.46, p<.05. When converted to odds, the coefficient was 0.92 suggesting that for each unit increase in horsepower, the odds of the engine being straight increased by .92:1. I cannot say that this is a strong evidence that horsepower could serve as useful "vs" predictor. The HDI for "hp" in plain odds is 0.85 to 0.97.
+
+
+#### Bayesian Analysis
+
+```{r}
+mycars$vs <- as.numeric(mycars$vs)- 1
+bayesLogitOut <- MCMClogit(formula = vs ~ hp+gear, data = mycars)
+summary(bayesLogitOut)
+plot(bayesLogitOut, col = "#35524A", border = "white")
+```
+Trace plots show the progress of the MCMC estimation process. Density plots show the posterior distribution of each coefficient. "gear" is centered near 0 which confirm that there isn`t much going on with that variable and might not be a good predictor. They are all quite normally shaped and the central region of 95% under the curve is where in all likelihood the parameter of interest lies.
+
+The output of MCMC focuses on describing the distribution of the parameters representing both the intercept and the coefficients of "hp" and "gear", calibrated in log-odds.
+
+The point estimates in the current output are listed under the "Mean" column and are similar to the output from the traditional logistic regression. The next column "SD" corresponds to the standard error in the output. The most common points of interest will be the log-odd coefficients of the two predictors. One of them is for "hp" -0.1087 and the other is "gear" -1.39. In the second output we can clearly see that the HDI for "gear" overlap with 0, so the population parameter for "gear" lies somewhere near 0. We need to convert "hp" to plain odds in order to interpret it, because the iinterval does not overlap with 0 and we can use that predictor.
+
+We can improve our view of the parameter estimates of the coefficient by converting the distribution from log odds to plain odds. 
+```{r}
+recLogOdds <- as.matrix(bayesLogitOut[,"hp"])
+recOdds <- apply(recLogOdds,1,exp) 
+hist(recOdds, main=NULL, col = "#64B6AC", border = "white") 
+abline(v=quantile(recOdds,probs=c(0.025,0.975)))
+# mean(recOdds) # 0.8977491
+```
+The histogram shows a distribution centered around .88 consistent with the results we obtained from glm(). The HDI bounds here are similar to but not identical to the confidence interval from glm() too. 
+Odds of 0.89:1 for the coefficient on the "hp", don`t make any big changes.
+
+*Conclusion*
+
+We examined the data from the 1974 Motor Trend US magazine, which comprises fuel consumption and 10 aspects of automobile design and performance for 32 automobiles, and tried to see if the horsepower and gear of a car could predict wheatear  the car would have straight of v-shaped engine. We conducted Bayesian logistic analysis, using horsepower and gear to predict engine. The posterior distribution of the coefficient for gear (calibrated as log odds) overlapped squarely with 0, suggesting that gear was not meaningful predictor of engine. In contrast the HDI for horsepower did not overlap with zero. When converted to regular odd, the mean value of the posterior distribution for hp was .89:1 suggesting that for every additional horsepower, car is about 1% more likely to have v=shaped engine. The confusion matrix showed overall error rate of 18% indicating that the logistic model was somehow good but the power of "hp" was a predictor was not that strong.
+
+__5. As noted in the chapter, the BaylorEdPsych add‑in package contains a procedure for generating pseudo‑R‑squared values from the output of the glm() procedure. Use the results of Exercise 1 to generate, report, and interpret a Nagelkerke pseudo‑R‑squared value.__
+
+```{r}
+PseudoR2(glmOut) 
+```
+
+R- square summarizes the overall goodness of the model. 
+
+A pseudo R-squared only has meaning when compared to another pseudo R-squared of the same type, on the same data, predicting the same outcome. The interpretation is: "the proportion of the total variability of the outcome that is accounted for by the model”.In this situation, the higher pseudo R-squared indicates which model better predicts the outcome.
+
+Cox and Snell's(.58) is based on the log likelihood for the model compared to the log likelihood for a baseline model. However, with categorical outcomes, it has a theoretical maximum value of less than 1, even for a "perfect" model. Nagelkerke is an adjusted version of the Cox & Snell R-square that adjusts the scale of the statistic to cover the full range from 0 to 1. The model with the largest R square  statistic is “best” according to this measurelike we said earlier. 
+
+If we examine Nagelkerke(0.7789526) we can interpret it as the proportion of variance in the outcome variable("vs") accounted by the predictor variables ("hp" and "gear"). The value is good for R-square (really close to 1). Given out that only "hp" as significant, these results suggest that "hp" has moderate role for accounting for the "vs" variable. This returns us to the idea of the statistical power.
+
+__6.  Continue the analysis of the Chile data set described in this chapter. The data set is in the “car” package, so you will have to install.packages() and library() that package first, and then use the data(Chile) command to get access to the data set. Pay close attention to the transformations needed to isolate cases with the Yes and No votes as shown in this chapter. Add a new predictor, statusquo, into the model and remove the income variable. Your new model specification should be vote ~ age + statusquo. The statusquo variable is a rating that each respondent gave indicating whether they preferred change or maintaining the status quo. Conduct general linear model and Bayesian analysis on this model and report and interpret all relevant results. Compare the AIC from this model to the AIC from the model that was developed in the chapter (using income and age as predictors).__
+
+```{r}
+data(Chile)
+
+## Grab Yes votes
+ChileY <- Chile[Chile$vote == "Y",]
+## Grab No votes
+ChileN <- Chile[Chile$vote == "N",]
+
+## Create new data set
+ChileYN <- rbind(ChileY, ChileN)
+ChileYN <- ChileYN[complete.cases(ChileYN),]
+
+## Simplify the factor
+ChileYN$vote <- factor(ChileYN$vote, levels = c("N","Y"))
+
+```
+
+We can create boxplots to represent ranges for each of the predictors, divided by Yes and No votes.
+
+```{r}
+par(mfrow = c(1,2))
+boxplot(age~vote, data = ChileYN, col = "#F0EC57", border = "gray")
+boxplot(statusquo~vote, data = ChileYN, col = "#748067", border = "gray")
+```
+
+```{r}
+## Displaing all the outliers
+# boxplot(statusquo~vote, data = ChileYN, 
+        # col = "#748067", border = "gray")$out
+
+## Assign the outlier values into a vector
+outliers <- boxplot(statusquo~vote, data = ChileYN, 
+        col = "#748067", border = "gray")$out
+print(outliers)
+
+# ChileYN <- ChileYN[-which(ChileYN$statusquo %in% outliers),]
+# boxplot(ChileYN$statusquo)
+```
+
+The plot on the right hand suggest that the wealthier voters might be more likely to vote No. For both predictors, there is overlap in the distributions of the predictors for Yes and No votes so it is hard to say wheatear or not this differences are simply due to a sampling error. There are outliers presenting in the boxplot on the right.
+
+Lets use logistic regression to see if we can scientifically predict a Yes or No vote based on the age and statusquo level of a person who responded to the poll:
+
+
+#### GLM Output
+```{r}
+chOut <- glm(formula = vote ~ statusquo + age, family = binomial(),
+             data = ChileYN)
+summary(chOut)
+```
+
+In the equation we can see the "link function" -  in this case indicating binomial(). By specifying "binomial()" we invoke the inverse logit as the basis of fitting the X variables("age" and "statusquo") to the Y variable ("vote").
+
+The "Deviance Residuals" show diagnostic information about the distribution of the residuals after the model is fit. The mean of the residuals is always 0 in our case slightly under 0.
+
+```{r}
+mean(residuals(chOut))
+```
+The fact that the median residual is slightly negative suggest that the distribution of the residuals is slightly positive skewed.
+
+```{r}
+hist(residuals(chOut), col = "#E3D87E", border = "white")
+```
+
+These residuals represent error of prediction. If there is residual that is strongly positive or strongly negative, it might suggest problem, such as present of an outlier.
+
+The output shows that the __intercept__ is *not significantly different from 0*. The value of the intercept is not very meaningful to us, but we must keep it in the model to make sure that other coefficient are calibrated correctly. 
+
+The coefficient on the __"statusquo"__ predictor is *statistically significant*, based on the Wald`s z-test value of 22.057 and the associated p-value. Because p-value (2e-16 ***) <.001 we can reject the null hypothesis that the log-odds of "statusquo" is 0 in the population. The Wald’s z-test is calculated by dividing the coefficient value by the standard error.
+
+The tiny coefficient of __"age"__ is *not significantly different from 0*, based on a Wald`s z-test value of 1.659 and associated p-value of 0.0972. Thus we *fail to reject* the null hypothesis that the log-odds of "age" is equal to 0 in the population.
+
+All these coefficients are log-odds values, we need to convert them to regular odds for easier interpretation. In this case we only significant is "statusquo".
+
+```{r}
+confint(chOut)
+
+exp(cbind(OR = coef(chOut), confint(chOut)))
+```
+
+The intercept represents odds 0f 0.82:1 for Yes vote by somebody without income that prefer to maintain the status quo. The odds of 1.011:1 for age show that every additional year of age, a person is about 1.1% more likely to vote Yes. In the case of statisquo, the odds are 23.91:1, which going to make big difference. 
+These results agree with the hypothesis tests: the confidence interval for age straddles 1:1, confirming non-significant result for that coefficient. The 95% CI for the intercept ranges from 0.48:1 up to 1.40:1 but we don`t need to interpret it like we established earlier. The CI of statusquo runs from low 18.24:1 up to 32.10. We have to mation the outliers presenting in the statusquo variable when we are talking about significance and prediction power.
+
+We should calculate and report the results from the chi-square test.
+
+```{r}
+anova(chOut, test = "Chisq")
+```
+
+We have separate tests that compare three "nested" models.
+The first chi-square test compared the null model to a model that just includes the statusquo predictor. The second chi-square compares the model with just age to a model that has both age and income as predictors. Only the first chi-square is statistically significant (because p = 2e-16 *** is below the threshold of p<.001). These results make sense in the light of the significance test on the coefficients and confirms the utility of a model that contains only statusquo. 
+
+Each successive line of the output, we lose a degree of freedom each time we enter a new predictor. The column "Deviance Resid" is the chi-square value for the effect of the predictor, while "Dev" is the chi-square that represent what is unaccounted for in the dependent variable after the entry of each predictor in the model.
+
+To close our consideration of the output of glm(), we will reproduced few lines from the output earlier.
+
+__Null deviance: 2360.29  on 1702  degrees of freedom__
+
+__Residual deviance:  734.52  on 1700  degrees of freedom__
+
+__AIC: 740.52__
+
+__Number of Fisher Scoring iterations: 6__
+
+The model took 6 iteration in order to produce the final model.
+The "Null Deviance" shows amount of error in the model, if we pretend there is no connection between X variables and Y variable. It shows what would happen if the predictors had no predictive value. The null model shows 17002 degrees of freedom for calculating the proportion of Yes and No votes. 
+The null model in some ways represents the null hypothesis. The next line shows how much error is reduced by introducing the X variables. We lose 2 degrees by introducing 2 variables. By introducing 2 predictors we reduced error from 2360.29 to 734.53 (which cost 3 degree of freedom) but is really great reduction.
+The difference between the null model and the residual model is distributed as chi-square and can be used as an omnibus test. Another note is about the overall result is about AIC. AIC stands for Akaike information criterion and examines the error reduction accomplished by a model considering the number of parameters. If we want to compare the results from our model (AIC = 740.52), and model that predict vote from income and age AIC (2332), we will choose the model with the lowest AIC. It is taking into account the number of predictors, but in our case, they are two for both models.
+
+```{r}
+table(round(predict(chOut, type= "response")), ChileYN$vote)
+```
+
+The off diagonal items, 54 and 74 are all the errorneous predictions.
+
+```{r}
+## Overall accuracy 
+(810+762)/(810+74+57+762) #92%
+
+(74+57)/(810+74+57+762) # error rate 8%
+
+```
+
+We can say that is a really good model. 
+
+
+We tested a measures of age and statusquo  to see if they could predict the vote of people in Chile. A chi-square omnibus test on the result of logistic regression was significant for model with the one predictor, chisq (1) = 1623.03, p<.0001. Only the Wald`s z-test on the statusquo coefficient was significant, z= 22.057, p <.05. When converted to odds, the coefficient was 23.91 suggesting that for each individual that who wants to maintain statusquo, the odds of that person voting Yes is 23.91:1. This is a strong evidence suggesting that statusquo could serve az a useful vote predictor. The 95% CI for statusquo range from low 18.24:1 up to 32.10, expressed in plain odd. If the study was represented 100 times, 95% of the similarly constructed intervals would contain the population value.
+
+#### Bayesian Analysis
+
+```{r}
+## Adjust the outcome variable
+ChileYN$vote <- as.numeric(ChileYN$vote)- 1
+
+bayesLogitOut1 <- MCMClogit(formula = vote ~ statusquo + age, data = ChileYN)
+summary(bayesLogitOut1)
+plot(bayesLogitOut1, col = "#111D4A")
+```
+
+Trace plots show the progress of the MCMC estimation process. Density plots show the posterior distribution of each coefficient. "age" is centered near 0 which confirm that there isn`t much going on with that variable and might not be a good predictor. Intercept also centers around 0. They are all quite normally shaped and the central region of 95% under the curve is where in all likelihood the parameter of interest lies.
+
+The output of MCMC focuses on describing the distribution of the parameters representing both the intercept and the coefficients of age and statusquo, calibrated in log-odds.
+
+The mean value of each coefficient is the “point estimate” at the center of the density distribution. These are fairly close to the output of glm() - 3.19 for statusquo and 0.001 for age. The next column "SD" corresponds to the standard error in the output. In the second output we can clearly see that the HDI for age overlap with 0, so the population parameter for "age" lies somewhere near 0. We need to convert statusquo to plain odds in order to interpret it, because the interval does not overlap with 0 and we can use that predictor.
+
+```{r}
+recLogOdds1 <- as.matrix(bayesLogitOut1[,"statusquo"])
+recOdds1 <- apply(recLogOdds1,1,exp) 
+hist(recOdds1, main=NULL, col = "#60656F", border = "white") 
+abline(v=quantile(recOdds1,probs=c(0.025,0.975)))
+mean(recOdds1) # 24.73367
+```
+The histogram shows almost symmetric distribution centered about 24.73, consistent with the results that we obtained from glm() and suggesting an increase of about 24.73:1 in likelihood of Yes vote. The HDI spans a region starting at as low as 18.49 and ranging as high as 32.66. These boundaries are really close to those of the CI we obtained from glm(). HDI gives us a direct view of the most likely range of coefficient values in the population.
+
+We examined the Chile vote data  and the research question was  whether age and statusquo predicted Chileans’ votes on a plebiscite in 1988. Voting “Yes” was a vote to keep then-president Augusto Pinochet in office. We conducted a Bayesian logistic analysis, using age and statusquo to predict votes. The posterior distribution of the coefficient for age (calibrated as log odds) overlapped squarely with zero, suggesting that age was not a meaningful predictor of votes. In contrast, the Highest Density Interval of statusquo did not overlap with zero. When converted to regular odds, the mean value of the posterior distribution for statusquo was 23.91 to 1, suggesting that for every additional status meantain, an individual was about 24% more likely to vote to keep Pinochet. However, a confusion matrix showed that the overall error rate was 8% indicating that the logistic model was  particularly good at predicting votes.
+
+__7. Bonus R code question: Develop your own custom function that will take the posterior distribution of a coefficient from the output object from an MCMClogit() analysis and automatically create a histogram of the posterior distributions of the coefficient in terms of regular odds (instead of log‑odds). Make sure to mark vertical lines on the histogram indicating the boundaries of the 95% HDI.__
+
+```{r}
+logFuncHist <- function(logO){
+ statusQuoLogOdds <- as.matrix(logO[,"statusquo"])
+ statusOdds <- apply(statusQuoLogOdds,1,exp)
+ hist(statusOdds, col = "#f7c297", border = "white")
+ abline(v=quantile(statusOdds,c(.025)),col='black')
+ abline(v=quantile(statusOdds,c(.975)),col='black')
+}
+logFuncHist(bayesLogitOut1)
+```
+
+
+
