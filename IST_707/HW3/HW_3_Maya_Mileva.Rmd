@@ -1,0 +1,217 @@
+---
+title: "HW_3"
+author: "Mileva,Maya"
+date: "7/21/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+We start our Association rule discovery on the bank data by first exploring the data and performing exhausive data wrangling which includes data cleaning, data integrity check, missing imputations and converting variables such that they suit our Asssociation rule mining function.
+
+```{r include=FALSE, echo=FALSE}
+# Load the require packages
+library(readr)
+library(dplyr)
+library(arules)
+library(arulesViz)
+library(plyr)
+```
+1. Loading csv file:
+```{r}
+# Read in the data 
+bankdata <- read.csv("C:/Users/aivii/OneDrive/Desktop/hw3/bankdata_csv_all.csv")
+```
+* About the data:
+
+id - 	a unique identification number
+
+age - age of customer in years (numeric)
+
+sex -MALE / FEMALE
+
+region - inner_city/rural/suburban/town
+
+income - income of customer (numeric)
+
+married - is the customer married (YES/NO)
+
+children - number of children (numeric)
+
+car - does the customer own a car (YES/NO)
+
+save_acct - does the customer have a saving account (YES/NO)
+
+current_acct - does the customer have a current account (YES/NO)
+
+mortgage - does the customer have a mortgage (YES/NO)
+
+pep - did the customer buy a PEP (Personal Equity Plan) after the last mailing (YES/NO)
+
+2. Data structure
+```{r}
+# Initial observation
+str(bankdata)
+```
+Observations:
+
+* 600 total observations with 12 variables.
+
+* The dataset is record data rather than transaction data 
+
+4. Preprocess the data 
+
+Transform the dataset into transactional data by converting categorical variables to factor and discretize numeric variables. It is worth to note that this will not look like a typical transactional data that we might find from a basket analysis dataset. However, the trasformation would still allow us to apply association rules mining technique on the dataset.
+
+
+5. Discretization
+
+* Discretize age by custom bin
+```{r}
+# all ages with age from 1-10 az a child, 10-20 as teen, ..
+bankdata$age <- cut(bankdata$age, breaks = c(0,10,20,30,40,50,60,Inf),labels=c("child","teens","twenties","thirties","fourties","fifties","old"))
+```
+
+* Discretize income by equal-width bin
+
+```{r}
+# For income variable 3 bins are created 
+min_income <- min(bankdata$income)
+max_income <- max(bankdata$income)
+bins = 3 
+width=(max_income - min_income)/bins;
+bankdata$income = cut(bankdata$income, breaks=seq(min_income, max_income, width))
+```
+
+* Convert numeric to nominal for "children"
+
+```{r}
+bankdata$children = factor(bankdata$children)
+```
+
+* Now the second step of conversion, changing "YES" to "[variable_name]=YES".
+
+```{r}
+bankdata$married=dplyr::recode(bankdata$married, YES="married=YES", NO="married=NO")
+bankdata$car=dplyr::recode(bankdata$car, YES="car=YES", NO="car=NO")
+bankdata$save_act=dplyr::recode(bankdata$save_act, YES="save_act=YES", NO="save_act=NO")
+bankdata$current_act=dplyr::recode(bankdata$current_act, YES="current_act=YES", NO="current_act=NO")
+bankdata$mortgage=dplyr::recode(bankdata$mortgage, YES="mortgage=YES", NO="mortgage=NO")
+bankdata$pep=dplyr::recode(bankdata$pep, YES="pep=YES", NO="pep=NO")
+
+head(bankdata, n=10)
+```
+
+* Dropping ID column
+
+We drop ID column as it is not significant for our Association rule mining.
+```{r}
+bankdata <-bankdata[-c(1)]
+head(bankdata)
+```
+6. Applying Ariori Algorithm
+
+```{r}
+# generate rules
+```
+
+
+```{r}
+rules <- apriori(bankdata, parameter = list(supp = 0.001, conf = 0.9, maxlen = 3))
+
+# high level overview of the rules
+# summary(rules)
+```
+ With support = 0.001 and confidence = 0.9, too many rules were generated. I we raise the support to 0.5 we don`t get any results, because is too high. With supp = 0.09, conf = 0.9, there are 27 rules. Another try support is set to 0.25 and confidence to 0.7 and we got set of rules. If it got higher to 0.30 and 0.8 - the rules are not enough.
+ 
+```{r}
+rules <-apriori(bankdata, parameter = list(supp = 0.25, conf = 0.7))
+```
+
+
+```{r}
+summary(rules)
+```
+```{r}
+options(digits = 3)
+# top 10 rules Max lift is 1.24, max confidence is 0.855 and max support is 0.285
+rules <- sort(rules, decreasing=TRUE, by=c("confidence","lif","support"))
+```
+```{r}
+inspect(rules[1:10])
+```
+ 
+```{r}
+plot(rules[1:10], method = "graph",interactive = FALSE, shading = NA) 
+```
+
+We can notice that person with no morgage and no personal equity plans(pep) is more likely to be married. Also, if person has saving account and no personal equity plans(pep), then he is likely to be married.
+
+7. Pep Analysis 
+
+We analyze PEP considering other parameters of a person.
+```{r}
+pepRules <- apriori(bankdata, parameter = list(maxlen = 4), appearance = list(rhs=c("pep=pep=YES","pep=pep=NO")))
+```
+```{r}
+inspect(pepRules)
+```
+```{r}
+myRules <- sort(pepRules, decreasing=TRUE, by="lift")
+inspect(myRules)
+```
+```{r}
+plot(myRules[1:10],method = "graph",interactive = FALSE, shading = NA)
+```
+
+* Plotting rules where PEP = NO
+
+```{r}
+plot(myRules[7:10], method = "graph")
+```
+When we observe rule 7 through 10, we see that person with no children has no PEP even if that person is married. So customers with no childred should not be targeted, the focus should be on the people with kids. We also observed that people with no PEP and no children means less expences - no morthage.
+
+* Plot rules where PEP=YES
+
+```{r}
+plot(myRules[1:6], method = "graph")
+```
+
+Like with said people with children have PEP. Also they have savings as well as current account which suggest that people with children have future plans and are potential customer to buy PEP.  They have support of 1.05, cofidence of 0.863 and max lift  of 1.89 which indicates that PEP is dependent on number of children and savings account.
+
+7.1 {married=YES,children=0,car=NO} -> no PEP
+
+S=0.133	C=0.800	L=1.47 - People still need their money for they future families.
+
+7.2 {children=1,mortgage=NO} -> yes PEP
+
+S=0.118 C=0.845 L=1.85 Those people have no additional payment for morgage so have an extra money to increase their fortune.
+
+7.3 {children=1,save_act=save_act=YES} -> yes PEP                                                                
+S=0.133 C=0.842 L=1.84  Families with children have big plans and wants to explore more oportunities for the future.
+
+7.4 {married=married=YES, children=0, save_act=save_act=YES} -> yes PEP                                                                   
+S=0.178  C=0.899  L=1.65   Those are potential customers, have combined incoome, savings account and no kids.
+
+7.5 {children=1, current_act=current_act=YES} -> yes PEP                                          S= 0.140  C=0.832 L=1.82  
+
+8. Report
+
+The marketing department of a financial firm keeps records on customers, including
+demographic information and, number of type of accounts. When launching a new product, such
+as a "Personal Equity Plan" (PEP), a direct mail piece, advertising the product, is sent to existing customers, and a record kept as to whether that customer responded and bought the product.
+
+Based on this store of prior experience, the managers decide to use data mining techniques to
+build customer profile models.
+Each record is a customer description where the "pep" field indicates whether or not that
+customer bought a PEP after the last mailing.
+
+Two transformations were needed to convert the record data into transaction data. The first step was to convert all numeric variables to nominal, because AR mining can only analyze nominal data (whether an item occurs in a transaction or not). After that, the bank data might have duplicate items like "NO, NO, NO, NO", which should be converted to "married=NO, car=NO, save_act=NO, current_act=NO". 
+
+Packages "readr" and "dplyr", which provided some powerful data manipulation "verbs" were used.
+Data has been cleaned and transformed so it is in the appropriate format. After the data has been processed, rules were gererated and explored. Appropriate for the business support and confidence levels were generated. Several trial rules were made in order to receive small ang good amount of rules. After the resuls were sorted, plotted and analyzed some conclusions were made. 
+When we observed the rules, we saw that person with no children has no PEP even if that person is married. So customers with no childred should not be targeted, the focus should be on the people with kids. We also observed that people with no PEP and no children means less expences - no morthage.
+
+
+ 
