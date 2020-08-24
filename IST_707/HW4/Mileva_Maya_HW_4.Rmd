@@ -1,0 +1,199 @@
+---
+title: 'HW4: Use Clustering to Solve a Mystery in History'
+author: "*Mileva,Maya*"
+
+output:
+  html_document:
+    theme: united
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r include=FALSE, echo=FALSE}
+# Load the require packages
+library(stats)
+library(factoextra)
+library(cluster)
+library(dplyr)
+library(ggvis)
+library(tidyr)
+library(mclust)
+library(reshape2)
+library(ggplot2)
+```
+### **Introduction**
+
+The Federalist Papers were a series of eighty-five essays urging the citizens of New York to
+ratify the new United States Constitution. Written by Alexander Hamilton, James Madison, and
+John Jay, the essays originally appeared anonymously in New York newspapers in 1787 and
+1788 under the pen name "Publius." In 1960s, statistician Mosteller and Wallace analyzed the frequency distributions of common function words in the Federalist Papers, and drew their conclusions. In this homework you are provided with the Federalist Paper data set. The features are a set of “function words”.  
+Now you are going to try solving this mystery using clustering algorithms k-Means, EM, and HAC. Document your analysis process and draw your conclusion on who wrote the disputedessays. Provide evidence for each method to demonstrate what patterns had been learned to
+predict the disputed papers, for example, visualize the clustering results and show where the
+disputed papers are located in relation to Hamilton and Madison's papers. 
+
+### **Data**
+
+```{r}
+## Loading the data
+papers <- read.csv("C:/Users/aivii/OneDrive/Desktop/hw4/fedPapers85.csv")
+## Exploring data set.
+dim(papers)
+## The data set have 85 observations(one for each paper), and 72 variables
+
+```
+```{r include=FALSE}
+head(papers)
+#papers <- na.omit(papers) # listwise deletion of missing
+#papers[,3:72] <- scale(papers[3:72]) # standardize variables
+```
+
+We can see that the first two columns refer to the author of the text and the text itself. Columns three and so, refer to the frequency of letters occurring in the text. The first two columns are factors.
+```{r}
+names(papers)
+
+```
+
+The authorships reported by the Project Gutenenberg versions are as follow:
+```{r}
+papers %>% group_by(author) %>% summarize(count = n())
+
+```
+
+```{r, include = FALSE}
+## Convert author to numeric
+## Remove filename
+#papers[, 1] = as.numeric(papers[, 1])
+## Papers = papers[, -c(2)]
+
+```
+
+After the initial assessment of the data, we can proceed to test different clustering methods that might give as a clue as to who are the three author of the disputed texts.
+
+### **Cluster Analysis**
+
+#### ***K-means***
+
+As mentioned in the question we have 3 authors, so we try and identify them, here we disregard disputed papers as author and we choose 3 centroids for our clustering algorithm. 
+
+
+```{r}
+
+set.seed(823)
+## The initial cluster assignment can be replicated
+
+km <- kmeans(papers[,3:72], 3, nstart = 20)
+
+## view km
+## km - K-means clustering with 3 clusters of sizes 5, 39, 41
+## print the centroid
+## km$centers
+
+## Compare cluster with actual 
+table(km$cluster, papers$author)
+
+fviz_cluster(km, data = data.frame(papers[,3:72]), ellipse.type = "convex") + theme_minimal()
+```
+
+We observe that there is an overlapping between clusters, which implies that we have chosen wrong number of clusters. So, lets use elbow chart to find correct number of centroids/clusters.
+
+
+* Use the __Elbow__ method to find the optimal number of clusters K 
+
+
+```{r}
+set.seed(723)
+fviz_nbclust(papers[,3:72], kmeans, method = "wss")
+```
+
+We can see that 4 clusters is the ideal number but it`s not clear.
+
+
+* Use the __Silhouette__ method to find the optimal number of clusters K 
+
+
+A different method for choosing the optimal number of K. The Silhouett method measures how well matched an observation (or object) is to its own cluster versus other clusters. 
+
+```{r}
+set.seed(723)
+fviz_nbclust(papers[,3:72], kmeans, method = "silhouette")
+```
+
+The highest number is 2 - means the number of clusters is appropriate.
+
+```{r}
+mycluster = cbind(papers,km$cluster)
+clustercl <- mycluster%>%group_by(papers$author, km$cluster)%>%summarise(number = n())
+clustercl
+```
+
+Disputed text is clustered into cluster no 2 and cluster no 3. All of Jay’s text are clustered into same cluster 1 without overlapping. In cluster 2, majority of text are of Hamilton followed by Madison and disputed which might suggest that disputed texts are of Hamilton. However, in cluster 3 there are Hamilton’s, Madison’s, and disputed texts are clustered together again. But there is no enough evidence that disputed texts might be a collaboration. From, cluster 2 and cluster 3 we can say that Hamilton and Madison might have used similar words for their text. 
+
+Having also the majority of the disputed texts, there is no clear distinction as to whether the disputed texts might be further evidence of collaboration, or the usage of similar words by two different authors.
+
+
+### ***Hierarchical cluster using "complete linkage" and "average linkage"***
+
+We'll now look at how the documents cluster through a heirarchical clustering algorithm (HAC).
+
+```{r}
+d =  dist(as.matrix(papers))
+hc = hclust(d)
+
+## Complete method and the average to compare how the clusters form. 
+## Excluding "author" variable
+hc_complete <- hclust(dist(papers[, 3:72]), method = 'complete')
+hc_avg  <- hclust(dist(papers[, 3:72]), method = 'average')
+
+## Plot the Dendrogram
+
+plot(hc_complete, hang = -1, cex = 0.6, main = "Federalist Papers Cluster - Complete", label = papers$author)
+
+```
+
+Jay's papers are all grouped together to the left side of the dendogram, same as k-means algorithm. Hamilton and Madison's papers are intertwined, with their three co-authored papers stacked between Madison's papers. A conclusion we can draw from this is that, though the papers were co-authored, Madison may have done the actual writing, something that would explain why they are grouped together.  
+Also within this first section, we find several of the disputed papers grouped with Madison. These 8 papers seem to be authored by Madison; whilst a group of three papers at the far right of the dendogram seem to be attrubitable to Hamilton.  
+
+```{r}
+plot(hc_avg, hang = -1, cex = 0.6, main = "Federalist Papers Cluster - Average", label = papers$author)
+```
+
+Again Jay`s papers are together. The picture in this graph is different, All the disp papers are mixed inbetween Hamilton and Madison and it is really hard to determine.
+
+```{r}
+## Cut the tree into 3 clusters
+cl_3_clusters <- cutree(hc_complete, 3)
+av_3_clusters <- cutree(hc_avg, 3)
+
+cl_3_clusters
+av_3_clusters
+```
+```{r}
+## Add cluster assignment to the dataset for summary & plotting
+papers_copy <- papers %>% 
+    mutate(cl_assigned_cluster = as.factor(cl_3_clusters),
+           av_assigned_cluster = as.factor(av_3_clusters))
+
+## Summary tables
+papers_copy %>% 
+    count(author, cl_assigned_cluster) %>% 
+    spread(key = cl_assigned_cluster, value = n, fill = 0)
+
+
+papers_copy %>% 
+    count(author, av_assigned_cluster) %>% 
+    spread(key = av_assigned_cluster, value = n, fill = 0)
+
+
+
+```
+
+
+### **Conclusion**
+
+We conclude that though K-means clustering gave us clear clusters, but it didn’t help enough to derive conclusion except for Jay’s text. The HAC algorithm, however, provided more insight into how the papers were being grouped, with the complete method showing that they could be more likely attributed to Madison, while the average method showed that some of the papers were more likely to be authored by Hamilton, some by Madison, and a couple that could yet be determined since the language used is very similar to that by both authors.
+Perhaps, to this effect, these 11 papers could be a mix of co-authored papers or a very realistic attempt of both authors copying each other’s writing style, which in effect makes identifying a true author an even more difficult task.
+
+
